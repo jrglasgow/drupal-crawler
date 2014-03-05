@@ -116,6 +116,8 @@ function drush_drupal_crawler_boost_crawl($file = NULL) {
   // Node crawler
   include_once($path . '/includes/drupal_crawler.node.inc');
   
+  drush_command_invoke_all_ref('drupal_crawler_crawl_list_alter', $crawl_list);
+
   // Crawl
   drupal_crawler_crawl($crawl_list);
   
