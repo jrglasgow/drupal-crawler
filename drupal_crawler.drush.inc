@@ -33,7 +33,8 @@ function drupal_crawler_drush_command() {
       'flush' => 'Delete all static files from Boost cache prior to initializing crawler.',
       'list' => 'Output a list of pages that are being crawled. Optionally specify fields to output as --list=type,id,url',
       'simulate' => 'Simulate crawling of site but do not make requests to the server.',
-      'alias-only' => 'Only follow path aliases and not the node/[NID] paths.'
+      'alias-only' => 'Only follow path aliases and not the node/[NID] paths.',
+      'wget'        => 'Use wget to crawl from the localhost. This is great for crawling development machines where you don\'t have a proper DNS pointing to it. ',
     ),
     'examples' => array(
       'drush boost-crawl --all' => 'Crawl all content on the site.',
@@ -68,7 +69,7 @@ function drush_drupal_crawler_boost_crawl($file = NULL) {
   
   // Crawler last run
   $drupal_crawler_last = variable_get('drupal_crawler_last', 0);
-  
+
   // Flush Boost cache?
   if (drush_get_option('flush') && !drush_get_option('simulate')) {
     drupal_crawler_flush_boost_cache();
@@ -97,7 +98,7 @@ function drush_drupal_crawler_boost_crawl($file = NULL) {
         array('@date' => format_date($timestamp_changed, 'custom', 'r'))));
     }
   }
-  
+
   // List of paths to crawl
   $crawl_list = array();
   
@@ -109,16 +110,16 @@ function drush_drupal_crawler_boost_crawl($file = NULL) {
   
   //boost_ignore_flush: 1
   
-  
+
   // Front page crawler
   include_once($path . '/includes/drupal_crawler.front-page.inc');
   
   // Node crawler
   include_once($path . '/includes/drupal_crawler.node.inc');
-  
+
   // Crawl
   drupal_crawler_crawl($crawl_list);
-  
+
   // Clean up
   if (!drush_get_option('simulate')) {
     variable_set('drupal_crawler_last', REQUEST_TIME);
@@ -142,10 +143,12 @@ function drush_drupal_crawler_boost_flush() {
  */
 function drupal_crawler_crawl($crawl_list = array()) {
   $list = drush_get_option('list');
+  $uri = parse_url(drush_get_context('DRUSH_URI'));
+
   foreach ($crawl_list as $path => $path_info) {
     // Print URL to screen
     if (drush_get_context('DRUSH_VERBOSE')) {
-      drush_print(t('Crawling @path', array('@path' => $path_info['url'])));
+      drush_print(t('Crawling @path', array('@path' => $uri['scheme'] . '://' .$uri['host'] . $path_info['url'])));
     }
     // Output a list of raw URLs (or other formatted fields as defined in --list)
     $list_options = ($list == 1) ? array('url') : explode(',', $list);
@@ -153,11 +156,28 @@ function drupal_crawler_crawl($crawl_list = array()) {
     foreach ($list_options as $option) {
       $output_format["!$option"] = $path_info[$option];
     }
-    drush_print(dt('!' . implode("\t!", $list_options), $output_format));
-    
-    // Currently just using drupal_http_request().
+    $dp = trim(dt('!' . implode("\t!", $list_options), $output_format));
+    if (!empty($dp)) {
+      drush_print($dp);
+    }
+
     if (!drush_get_option('simulate')) {
-      $r = drupal_http_request($path_info['url']);
+      if (drush_get_option('wget')) {
+        $command = 'wget -O /dev/null -q http://localhost' . $path_info['url'] . ' --header="Host: ' . $uri['host'] . '"';
+        $results = array();
+        $return = exec($command, $results);
+        if ($return == 0 && drush_get_context('DRUSH_VERBOSE')) {
+          drush_log(dt('!url crawled', array('!url' => $path_info['url'])), 'success');
+        }
+        else {
+          drush_log(dt('There was an error fetching !url', array('!url' => $path_info['url'], '!code' => $return)), 'error');
+          druah_print_r($results);
+        }
+      }
+      else {
+        // using drupal_http_request()
+        $r = drupal_http_request($path_info['url']);
+      }
     }
   }
 }
